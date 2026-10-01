@@ -94,13 +94,6 @@ export function Login() {
             </Link>
           </p>
         </div>
-
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white/60 px-4 py-3 text-xs text-slate-500">
-          <p className="font-medium text-slate-600">Seeded demo accounts</p>
-          <p className="mt-1">
-            alice@example.com &middot; bob@example.com &middot; carol@example.com
-          </p>
-        </div>
       </div>
     </div>
   );
