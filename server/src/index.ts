@@ -15,13 +15,23 @@ async function main() {
 
   const server = app.listen(env.PORT, () => {
     console.log(`[api] BlogSpace API listening on http://localhost:${env.PORT}`);
-    console.log(`[api] Allowing requests from ${env.CLIENT_ORIGIN}`);
+    console.log(`[api] Allowing requests from ${env.CORS_ORIGIN}`);
+    console.log(`[api] mode: ${env.NODE_ENV}`);
   });
 
   // Finish in-flight requests, then close the database pool before exiting.
   const shutdown = (signal: string) => {
     console.log(`\n[api] ${signal} received, shutting down.`);
+    // PaaS hosts kill the process after a grace period, so make sure a hung
+    // connection can never leave this container alive until it is force-killed.
+    const forceExit = setTimeout(() => {
+      console.warn('[api] Graceful shutdown timed out, forcing exit.');
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+
     server.close(async () => {
+      clearTimeout(forceExit);
       await prisma.$disconnect();
       process.exit(0);
     });

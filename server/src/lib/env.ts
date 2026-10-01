@@ -9,8 +9,14 @@ dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters long'),
+  // PaaS hosts (Render, Railway, Fly) inject PORT; the default is for local runs.
   PORT: z.coerce.number().int().positive().default(5000),
-  CLIENT_ORIGIN: z.string().url().default('http://localhost:5173'),
+  // Origin allowed to call the API from a browser. Unset means same-origin only,
+  // which is the normal case for the single-service deployment.
+  CORS_ORIGIN: z.string().url().optional(),
+  // Legacy name for CORS_ORIGIN, kept so existing local .env files keep working.
+  CLIENT_ORIGIN: z.string().url().optional(),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -26,4 +32,15 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+// CORS_ORIGIN wins, then the legacy CLIENT_ORIGIN, then the Vite dev server.
+const corsOrigin =
+  parsed.data.CORS_ORIGIN ?? parsed.data.CLIENT_ORIGIN ?? 'http://localhost:5173';
+
+export const env = {
+  ...parsed.data,
+  CORS_ORIGIN: corsOrigin,
+  /** @deprecated alias of CORS_ORIGIN, kept for backwards compatibility. */
+  CLIENT_ORIGIN: corsOrigin,
+  /** Serves the built React app from Express and enables production behaviour. */
+  isProduction: parsed.data.NODE_ENV === 'production',
+};

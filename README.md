@@ -179,12 +179,23 @@ Copy the example files and fill them in. Never commit the real `.env` files.
 
 **server/.env** (from `server/.env.example`)
 
-| Variable        | Example                                                          |
-| --------------- | ---------------------------------------------------------------- |
-| `DATABASE_URL`  | `postgresql://blogspace:secret@localhost:5432/blogspace?schema=public` |
-| `JWT_SECRET`    | a long random string                                             |
-| `PORT`          | `5000`                                                           |
-| `CLIENT_ORIGIN` | `http://localhost:5173`                                          |
+| Variable       | Example                                                          |
+| -------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL` | `postgresql://blogspace:secret@localhost:5432/blogspace?schema=public` |
+| `JWT_SECRET`   | a long random string                                             |
+| `PORT`         | `5000`                                                           |
+| `CORS_ORIGIN`  | `http://localhost:5173`                                          |
+| `NODE_ENV`     | `development`                                                    |
+
+`CLIENT_ORIGIN` is still accepted as a deprecated alias for `CORS_ORIGIN`, so
+older `.env` files keep working.
+
+`NODE_ENV=production` is what makes Express serve the built React app (see
+[section 14](#14-deployment)).
+
+On a managed database, `DATABASE_URL` must be the **pooled** connection string
+at runtime, while `prisma migrate` needs the **direct** one. See
+`server/.env.example` for the full explanation.
 
 Generate a strong secret with:
 
@@ -425,6 +436,90 @@ Known non-issues you may notice:
 - Prisma prints a deprecation warning about the `package.json#prisma` seed
   setting. It still works in Prisma 6 and will move to `prisma.config.ts` in
   Prisma 7.
+
+---
+
+## 14. Deployment
+
+BlogSpace deploys as a **single service**: one Node process serves both the
+Express API and the built React app from `client/dist`. That means one origin,
+one URL, no CORS in production, and no second service to keep in sync.
+
+```text
+Browser --> Express (one service)
+             |-- /api/*         -> JSON API
+             \-- everything else -> React SPA (client-side routing)
+```
+
+When `NODE_ENV=production`, `server/src/app.ts` enables static file serving plus
+an SPA fallback. Deep links such as `/posts/abc` return `index.html` so React
+Router can take over, while unmatched `/api/*` paths still fall through to the
+JSON 404 handler. The fallback deliberately refuses to serve HTML for API paths,
+non-GET methods, or requests that do not accept HTML.
+
+### 14.1 Environment variables required
+
+| Variable       | Required | Notes                                                             |
+| -------------- | -------- | ----------------------------------------------------------------- |
+| `NODE_ENV`     | yes      | Must be `production`, otherwise the client is not served          |
+| `DATABASE_URL` | yes      | **Pooled** connection string                                       |
+| `JWT_SECRET`   | yes      | 16+ characters; let the host generate it                           |
+| `PORT`         | no       | Render/Railway/Fly inject it; leave unset in production           |
+| `CORS_ORIGIN`  | no       | Only needed if the frontend is hosted separately                  |
+
+`render.yaml` supplies `NODE_ENV` and generates `JWT_SECRET` automatically.
+
+### 14.2 Provision the database
+
+Neon's free tier suits this. Create a project, then copy **both** connection
+strings: the *pooled* one becomes `DATABASE_URL`, and the *direct* one is kept
+for migrations. See `server/.env.example` for why the two are not interchangeable.
+
+### 14.3 Apply the migration
+
+Migrations cannot run through a transaction pooler, so run this once from your
+own machine with the direct URL:
+
+```bash
+DATABASE_URL="postgresql://.../blogspace?sslmode=require&directConnection=true" \
+  npx prisma migrate deploy --schema server/prisma/schema.prisma
+```
+
+Optionally insert sample data:
+
+```bash
+npx prisma db seed --schema server/prisma/schema.prisma
+```
+
+### 14.4 Deploy to Render
+
+1. Push the repo to GitHub.
+2. In the Render dashboard choose **New** -> **Blueprint**, then select the repo.
+   `render.yaml` is picked up automatically.
+3. Render prompts for the one secret it cannot generate and creates
+   `JWT_SECRET` for you:
+   - `DATABASE_URL` -> the **pooled** string
+   - `CORS_ORIGIN` -> leave blank for a single-service deployment
+4. Deploy. The build runs `npm ci && npm run build`, and start runs
+   `npm run start --workspace server`.
+5. Health is checked against `/api/health`.
+
+The app is then live at `https://blogspace.onrender.com`.
+
+### 14.5 Updating the deployment
+
+Pushing to `main` triggers a rebuild automatically.
+
+### 14.6 Things to know
+
+- **The free tier sleeps.** An idle free web service spins down after roughly 15
+  minutes and the first request afterwards is slow while it wakes up. This is
+  normal and not a fault in the app.
+- **TLS is terminated by the platform proxy.** `trust proxy` is enabled so
+  `secure` cookies and client IPs are read correctly from `X-Forwarded-For`.
+- **Migrations are not automatic.** Re-run section 14.3 whenever you add one.
+- **`client/dist` is build output**, so it is git-ignored and rebuilt by Render
+  rather than committed.
 
 ---
 

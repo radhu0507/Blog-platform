@@ -1,0 +1,40 @@
+# Render blueprint for the BlogSpace single-service deployment.
+# One web service serves both the Express API and the built React app, so there
+# is a single origin and CORS is not involved in production.
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: blogspace
+    runtime: node
+    plan: free
+    region: singapore
+
+    # Build the API and the client in the same run, so client/dist exists
+    # before the server starts serving it.
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start --workspace server
+
+    # /api/health already exists, so no extra endpoint is needed.
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: NODE_VERSION
+        value: "20"
+
+      # Neon (or any host) POOLED connection string - used at runtime.
+      - key: DATABASE_URL
+        sync: false
+
+      # Render generates and stores this for you. Do not put it in this file.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Same-origin deployment, so no cross-origin value is needed. Set this
+      # manually only if you later host the frontend separately.
+      - key: CORS_ORIGIN
+        sync: false
