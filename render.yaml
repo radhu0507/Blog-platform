@@ -13,7 +13,18 @@ services:
 
     # Build the API and the client in the same run, so client/dist exists
     # before the server starts serving it.
-    buildCommand: npm ci && npm run build
+    #
+    # --include=dev is required. Render sets NODE_ENV=production, which makes npm
+    # default to omit=dev, so a plain `npm ci` does not install typescript,
+    # prisma or the @types packages and the TypeScript build fails. Dev
+    # dependencies are needed to build only; at runtime the server executes the
+    # compiled dist output and never loads them.
+    #
+    # db:generate is also required. `npm ci` does not run prisma generate for the
+    # hoisted workspace client, so tsc typechecks against the stub typings and
+    # fails with TS2339 for Prisma.PrismaClientKnownRequestError in
+    # middleware/errorHandler.ts. Generate needs no database connection.
+    buildCommand: npm ci --include=dev && npm run db:generate && npm run build
     startCommand: npm run start --workspace server
 
     # /api/health already exists, so no extra endpoint is needed.
