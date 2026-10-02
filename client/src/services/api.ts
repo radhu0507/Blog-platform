@@ -16,9 +16,22 @@ export const tokenStore = {
   clear: (): void => localStorage.removeItem(TOKEN_KEY),
 };
 
+/**
+ * Production is a single Render service: Express serves `client/dist`, so the API
+ * lives on the same origin and the relative `/api` path is correct. Defaulting to
+ * localhost in a production build would point the browser at the visitor's own
+ * machine instead of the deployed server, which is what makes the app report the
+ * backend as missing.
+ *
+ * Local development keeps talking to the API on port 5000, either through
+ * `VITE_API_URL` or this default.
+ */
+const defaultBaseUrl = import.meta.env.PROD ? '/api' : 'http://localhost:5000/api';
+
 const api = axios.create({
-  // Falls back to the default local API so the app still works if .env is missing.
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api',
+  // Falls back to the environment-appropriate default so the app still works if
+  // .env is missing. `||` rather than `??` so an empty value cannot win.
+  baseURL: import.meta.env.VITE_API_URL || defaultBaseUrl,
   headers: { 'Content-Type': 'application/json' },
 });
 
